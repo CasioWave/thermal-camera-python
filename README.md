@@ -73,7 +73,7 @@ UPDATE: 23-01-2025
 Does nothing much. Creates a calibration data file called `calib.npy` that contains linear fit coefficients for the standard computation of temperature (in Celcius), given by:
 
 $$
-T = \frac{1}{64} \cdot \text{Hi} + \frac{256}{64} - 273.15
+T = \frac{1}{64} \cdot \text{Hi} + \frac{256}{64} \text{Lo} - 273.15
 $$
 
 Feel free to use it and generate a workable `calib.npy` file if you do not have any of your own
