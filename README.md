@@ -26,13 +26,15 @@ UPDATE: 23-01-2025
 - **2**: Decrease contrast
 - **3**: Increase blur radius
 - **4**: Decrease blur radius
-- **5**: Increase threshold for max and min temperature display
-- **6**: Decrease threshold for max and min temperature display
+- **5**: Increase threshold for max and min temp display
+- **6**: Decrease threshold for max and min temp display
 - **7**: Cycle through interpolation methods
 - **8**: Cycle through colormaps
 - **9**: Increase smoothing order
 - **0**: Decrease smoothing order
 - **e**: Toggle experimental data recording
+- **g**: Start video recording
+- **j**: Stop video recording
 
 ### Setting Parameters
 - **fitOrder**: Order of the fit for temperature calculation (1 = Linear, 2 = Quadratic)
@@ -81,11 +83,11 @@ Feel free to use it and generate a workable `calib.npy` file if you do not have 
 ## To-Do
 - [ ] Collect Calibration data
 - [ ] Regress data on multiple models
-- [-] MAIN: Create software for using the camera, primarily for scientific purposes.
-  - [-] Heatmaps
-  - [-] Multiple (unlimited) pixel data monitoring
-  - [-] Global scene temperature mean/median/max/min/etc. Possible floating display.
+- [x] MAIN: Create software for using the camera, primarily for scientific purposes.
+  - [x] Heatmaps
+  - [x] Multiple (unlimited) pixel data monitoring
+  - [x] Global scene temperature mean/median/max/min/etc. Possible floating display.
   - [ ] Temperature filtering based on range.
-  - [-] Generating collected data with appropriate error estimates in .csv format.
-  - [ ] Video recording.
+  - [x] Generating collected data with appropriate error estimates in .csv format.
+  - [x] Video recording.
 - [ ] Possibly decoding USB communication with the camera (?)

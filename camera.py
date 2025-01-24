@@ -50,6 +50,8 @@ print("-> Press '8' to cycle through colormaps")
 print("-> Press '9' to increase smoothing order")
 print("-> Press '0' to decrease smoothing order")
 print("-> Press 'e' to toggle experimental data recording")
+print("-> Press 'g' to start video recording")
+print("-> Press 'j' to stop video recording")
 
 #Importing Libraries
 import numpy as np
@@ -57,7 +59,8 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import time
 import csv
-from copy import deepcopy
+from platform import system
+from os import makedirs
 
 #Important parameters
 fitOrder = 1 # 1 = Linear, 2 = Quadratic
@@ -96,7 +99,7 @@ except FileNotFoundError as e:
     exit()
 
 #USB Camera number
-dev = 0 #Generally, it is 0 if the thermal camera is the only USB Cam connected
+dev = 2 #Generally, it is 0 if the thermal camera is the only USB Cam connected, and 3 if you are on a laptop with a webcam
 
 #Smoothing order for temperature matrix
 smoothOrder = 1 # 1 for 3x3, 2 for 5x5, 3 for 7x7, etc.
@@ -110,7 +113,11 @@ tempStats = True
 #Setting things up
 
 #Setting up camera settings
-cam = cv.VideoCapture(dev, cv.CAP_ANY) #CAP_ANY for widest compatibility
+if system() == "Linux":
+    cam = cv.VideoCapture(dev, cv.CAP_V4L2) #CAP_V4L2 for Linux
+else:
+    cam = cv.VideoCapture(dev, cv.CAP_ANY) #CAP_ANY for widest compatibility on Windows
+#I do not have access to a macOS machine, so I cannot test this on macOS - please test and report any issues
 cam.set(cv.CAP_PROP_CONVERT_RGB, 0.0) #Forces RGB conversion off
 
 #Setting scale of displayed image
@@ -143,6 +150,10 @@ expToggle = False #Toggle for experimental data recording
 data = [] #List of data - holds data for one experimental run
 expStartTimes = [] #List of start times for each experimental run
 expEndTimes = [] #List of end times for each experimental run
+# Add recording-related variables
+recording = False
+elapsed = "00:00:00"
+snaptime = "None"
 
 #Defining some useful functions
 def snap(heatmap,tMatrix):
@@ -156,6 +167,7 @@ def snap(heatmap,tMatrix):
     np.savetxt("tempSnap"+now+".csv", tMatrix, delimiter=",")
     return True
 
+#Newly vectorized version of getTemp
 def getTemp(thdata,coords,calib=cdata,fitOrder=fitOrder,accuracy=2):
     '''
     thdata: numpy array containing temperature information
@@ -215,6 +227,7 @@ def tempSmooth(thdata, coor, order=smoothOrder, calib=cdata, fitOrder=fitOrder, 
     
     return round(avg_temp, accuracy)
 
+#Draws the crosshair and temperature data on the image
 def drawData(coor,temp,imdata,scale=scale):
     '''
     coor: tuple containing coordinates of pixel
@@ -272,8 +285,18 @@ def clickEvent(event, x, y, flags, params):
     global trackedPixels
     if event == cv.EVENT_LBUTTONDOWN:
         print(f'({x},{y})')
-        trackedPixels.append((y,x))
+        if (y,x) not in trackedPixels:
+            trackedPixels.append((y,x))
+        else:
+            print("Already tracking this pixel")
     return True
+
+# Function to start recording
+def rec():
+    makedirs("recordings", exist_ok=True)
+    now = time.strftime("%Y%m%d-%H%M%S")
+    videoOut = cv.VideoWriter("recordings/"+ now + 'output.avi', cv.VideoWriter_fourcc(*'XVID'), 25, (newX, newY))
+    return videoOut
 
 #Attach the click event to the window
 cv.setMouseCallback("Thermal Camera", clickEvent)
@@ -367,8 +390,8 @@ while True:
                 drawData(x, t, heatmap)
             #Display data
             if hud:
-                cv.putText(heatmap, f"Max Temp: {max_temp} K at {max_temp_coords}", (10, 20), font, 0.5, (0, 255, 255), 1, cv.LINE_AA)
-                cv.putText(heatmap, f"Min Temp: {min_temp} K at {min_temp_coords}", (10, 40), font, 0.5, (0, 255, 255), 1, cv.LINE_AA)
+                cv.putText(heatmap, f"Max Temp: {max_temp} K at {(int(max_temp_coords[0]),int(max_temp_coords[1]))}", (10, 20), font, 0.5, (0, 255, 255), 1, cv.LINE_AA)
+                cv.putText(heatmap, f"Min Temp: {min_temp} K at {(int(min_temp_coords[0]),int(min_temp_coords[1]))}", (10, 40), font, 0.5, (0, 255, 255), 1, cv.LINE_AA)
                 cv.putText(heatmap, f"Average Temp: {averageTemp: .2f} K", (10, 60), font, 0.5, (0, 255, 255), 1, cv.LINE_AA)
                 cv.putText(heatmap, f"Colormap: {cmapText}", (10, 80), font, 0.5, (0, 255, 255), 1, cv.LINE_AA)
             #Display floating maximum and minimum temperature values, conditionally
@@ -393,6 +416,12 @@ while True:
                     font, 0.45,(0,0,0), 2, cv.LINE_AA)
                     cv.putText(heatmap,str(min_temp)+' K', ((mcol*scale)+10, (mrow*scale)+5),\
                     font, 0.45,(0, 255, 255), 1, cv.LINE_AA)
+            #Recording the video
+            if recording:
+                elapsed = (time.time() - start)
+                elapsed = time.strftime("%H:%M:%S", time.gmtime(elapsed))
+                videoOut.write(heatmap)
+            
             #Show the image
             if frameC%dispInt == 0: #Display every dispInt frames
                 cv.imshow("Thermal Camera", heatmap)
@@ -403,6 +432,9 @@ while True:
             break #Default behavior, as such exp data is compromised anyways
     elif not cam.isOpened():
         print("Error establishing connection")
+        print("This often happens when the camera ID is wrong!")
+        print("Please check the camera ID and try again")
+        print("Use the 'lsusb' command in the terminal to check the camera ID")
         break #Exit the loop if the camera is not connected - default behavior, as such exp data is compromised anyways
     #Key press handling
     keyPress = cv.waitKey(1)
@@ -412,19 +444,24 @@ while True:
         break
     elif keyPress == ord('s'):
         snap(heatmap,tMatrix)
+        print("Snapshot taken")
     elif keyPress == ord('c'):
         #Clear all tracked pixels
         trackedPixels = []
+        print("Cleared all tracked pixels")
     elif keyPress == ord('h'):
         #Toggle HUD
         hud = not hud
+        print(f"HUD toggled: {hud}")
     elif keyPress == ord('m'):
         #Toggle temperature statistics display
         tempStats = not tempStats
+        print(f"Temperature statistics display toggled: {tempStats}")
     elif keyPress == ord('r'):
         #Reset tracked pixels and experimental data
         trackedPixels = []
         experimentalData = []
+        print("Reset tracked pixels and experimental data")
     elif keyPress == ord('q'):
         cam.release()
         cv.destroyAllWindows()
@@ -438,8 +475,13 @@ while True:
     elif keyPress == ord('a'):
         #Toggle recording all temperature data
         recordAll = not recordAll
+        if recordAll:
+            print("Recording all temperature data")
+        else:
+            print("Recording only selected pixels")
     elif keyPress == ord('x'):
         #Toggle smoothed temperature data
+        print("Toggling smoothed temperature data - NOTE: VERY SLOW")
         smoothed = not smoothed
     elif keyPress == ord('1'):
         #Increase contrast
@@ -471,6 +513,7 @@ while True:
             interp = "nearest"
         elif interp == "nearest":
             interp = "cubic"
+        print(f"Interpolation method: {interp}")
     elif keyPress == ord('8'):
         #Cycle through colormaps
         colormap += 1
@@ -482,6 +525,17 @@ while True:
     elif keyPress == ord('0'):
         #Decrease smoothing order
         smoothOrder -= 1
+    elif keyPress == ord('g'):
+        #Start recording
+        recording = True
+        start = time.time()
+        videoOut = rec()
+        print("Recording started")
+    elif keyPress == ord('j'):
+        #Stop recording
+        recording = False
+        videoOut.release()
+        print("Recording stopped")
     elif keyPress == ord('e'):
         #Toggle experimental data recording
         time.sleep(0.1) #To prevent accidental double presses
@@ -507,7 +561,7 @@ while True:
         if recordAll:
             data.append((tMatrix,frameTime-startTime)) #Record all data
         else:
-            d = (tMatrix[i[0]//scale,i[1]//scale] for i in trackedPixels) #Record only the selected pixels
+            d = np.asarray([tMatrix[i[0]//scale,i[1]//scale] for i in trackedPixels]) #Record only the selected pixels
             data.append((d,frameTime-startTime)) #Record the data
 
 #Account for the case where the experiment was not stopped
@@ -520,24 +574,56 @@ if noExp > 0:
     #We have to deal with two cases here - one where the data is recorded for all pixels, and one where it is recorded for only selected pixels
     #The format of the data is different in each case
     for i in range(noExp):
+        direc = f"expFolder{round(expStartTimes[i])}-{round(expEndTimes[i])}"
+        makedirs(direc, exist_ok=True)
         d = experimentalData[i]
-        if type(d[0]) != tuple:
+        tempData = np.array([np.array(x[0]) for x in d])
+        timeData = np.array([x[1] for x in d])
+        if tempData[0].shape == (resY,resX):
             #Data is recorded for all pixels
             #Not saving in CSV format as it is not very useful
-            np.save(f"expData{expStartTimes[i]: .0f}-{expEndTimes[i]: .0f}_{i}.npy",np.asarray(d))
+            np.save(direc+f"/expData{expStartTimes[i]: .0f}-{expEndTimes[i]: .0f}_{i}_tempData.npy", tempData)
+            np.save(direc+f"/expData{expStartTimes[i]: .0f}-{expEndTimes[i]: .0f}_{i}_timeData.npy", timeData)
+            #Use matplotlib to create plots of the max, average, and min temperatures in data vs. time
+            if plot:
+                maxTemp = np.max(tempData, axis=(1,2))
+                minTemp = np.min(tempData, axis=(1,2))
+                avgTemp = np.mean(tempData, axis=(1,2))
+                plt.figure()
+                plt.plot(timeData, maxTemp, label="Max Temp")
+                plt.plot(timeData, minTemp, label="Min Temp")
+                plt.plot(timeData, avgTemp, label="Average Temp")
+                plt.xlabel("Time (s)")
+                plt.ylabel("Temperature (K)")
+                plt.title(f"Experimental Data {i}")
+                plt.legend()
+                plt.savefig(direc+f"/expData{round(expStartTimes[i])}-{round(expEndTimes[i])}_{i}.png")
+                plt.close()
         else:
+            #Use matplotlib to create plots of the data vs. time, with all the pixels labelled on one plot
+            if plot:
+                plt.figure()
+                for j in range(len(trackedPixels)):
+                    temp = np.array([list(x)[j] for x in tempData])
+                    plt.plot(timeData, temp, label=f"{trackedPixels[j]}")
+                plt.xlabel("Time (s)")
+                plt.ylabel("Temperature (K)")
+                plt.title(f"Experimental Data {i}")
+                plt.legend()
+                plt.savefig(direc+f"/expData{round(expStartTimes[i])}-{round(expEndTimes[i])}_{i}.png")
+                plt.close()
             #Data is recorded for only selected pixels
-            with open(f"expData{round(expStartTimes[i])}-{round(expEndTimes[i])}_{i}.csv", "w", newline="") as f:
+            with open(direc+f"/expData{round(expStartTimes[i])}-{round(expEndTimes[i])}_{i}.csv", "w", newline="") as f:
                 writer = csv.writer(f)
                 headers = ["Coordinates"]
-                for j in range(len(d)):
-                    headers.append(f"{j}")
+                for j in range(timeData.shape[0]):
+                    headers.append(f"{round(timeData[j],2)}")
                 writer.writerow(headers)
                 for k in range(len(trackedPixels)):
                     row = [trackedPixels[k]]
-                    for j in range(len(d)):
-                        data_list = list(d[j][0])
-                        row.append(data_list[k])
+                    for j in range(tempData.shape[0]):
+                        tP = tempData[j][k]
+                        row.append(round(tP,2))
                     writer.writerow(row)
 #End of main loop
 print("End of program")
