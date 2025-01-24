@@ -99,7 +99,7 @@ except FileNotFoundError as e:
     exit()
 
 #USB Camera number
-dev = 2 #Generally, it is 0 if the thermal camera is the only USB Cam connected, and 3 if you are on a laptop with a webcam
+dev = 0 #Generally, it is 0 if the thermal camera is the only USB Cam connected, and 2 if you are on a laptop with a webcam
 
 #Smoothing order for temperature matrix
 smoothOrder = 1 # 1 for 3x3, 2 for 5x5, 3 for 7x7, etc.
